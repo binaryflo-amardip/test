@@ -1,0 +1,428 @@
+const bcrypt = require("bcryptjs");
+const crypto = require("crypto");
+const jwt = require("jsonwebtoken");
+const User = require("../models/userModel");
+const Session = require("../models/sessionModel");
+const Otp = require("../models/otpModel.js");
+const { mailer } = require("../utils/mailer.js");
+const { generateSecureOTP } = require("../utils/otp.js");
+
+const register = async (req, res) => {
+  try {
+    const { firstName, lastName, email, password, repassword, phone } =
+      req.body;
+    if (
+      !firstName ||
+      !lastName ||
+      !email ||
+      !password ||
+      !repassword ||
+      !phone
+    ) {
+      return res.json({ success: false, message: "Please fill in all fields" });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const newUser = new User({
+      username: email,
+      email: email,
+      firstName: firstName,
+      lastName: lastName,
+      phone: phone,
+      password: hashedPassword,
+      resetPasswordToken: "",
+      resetPasswordExpires: 0,
+      isVerified: true,
+      // isVerified: false,
+    });
+
+    const user = await newUser.save();
+
+    res.json({ success: true, userId: user._id.toString(), email: user.email });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+const sendVerifyOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found!" });
+    }
+    await Otp.deleteMany({ userId: user._id });
+    const new_otp = generateSecureOTP();
+    const otp = new Otp({ userId: user._id, otp: new_otp });
+    await otp.save();
+    const subject = "Your Verification OTP";
+    const body = `Your verification OTP is: ${otp}`;
+
+    await mailer(email, subject, body);
+
+    res.status(200).json({ success: true, message: "" });
+  } catch (err) {
+    console.log(err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const verifyUser = async (req, res) => {
+  try {
+    const { otp, userId, platform } = req.body;
+    const user = await User.findById(userId);
+
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found!" });
+    }
+
+    const otp_doc = await Otp.findOne(userId, otp);
+
+    if (!otp_doc) {
+      return res
+        .status(401)
+        .json({ success: false, message: "OTP has expired!" });
+    }
+
+    if (otp_doc.otp === otp) {
+      const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET);
+
+      await Otp.deleteMany({ userId });
+
+      // Invalidate old session for this platform
+      await Session.deleteMany({ userId: user._id, platform });
+
+      // Create new session
+      await Session.create({
+        userId: user._id,
+        platform,
+        token,
+      });
+
+      res.cookie("token", token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === "production",
+        sameSite: "Strict",
+        maxAge: 28 * 24 * 60 * 60 * 1000,
+      });
+      return res.status(200).json({ success: true, message: "" });
+    }
+    return res.status(401).json({ success: false, message: "OTP Mismatch!" });
+  } catch (err) {
+    console.log(err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const login = async (req, res) => {
+  try {
+    const { email, password, platform } = req.body;
+
+    if (!email || !password || !platform) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Please fill in all fields" });
+    }
+
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found" });
+    }
+
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Incorrect password" });
+    }
+
+    if (!user.isVerified) {
+      return res
+        .status(403)
+        .json({ success: false, message: "Account not verified" });
+    }
+
+    // Generate JWT token
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "28d",
+    });
+
+    // Remove old sessions on this platform
+    await Session.deleteMany({ userId: user._id, platform });
+
+    // Create new session
+    await Session.create({ userId: user._id, token, platform });
+
+    // Set secure cookie
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: false, // ✅ in dev use false; only true on HTTPS
+      sameSite: "Lax", // ✅ 'Lax' is usually safest for dev
+      maxAge: 28 * 24 * 60 * 60 * 1000,
+    });
+
+    const userData = {
+      id: user._id.toString(),
+      firstname: user.firstname,
+      lastname: user.lastname,
+      email: user.email,
+      phone: user.phone,
+    };
+
+    return res.status(200).json({
+      success: true,
+      message: "Login successful",
+      userId: user._id,
+      userData,
+    });
+  } catch (err) {
+    console.log(err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const sendLoginOtp = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found!" });
+    }
+    await Otp.deleteMany({ userId: user._id });
+    const new_otp = generateSecureOTP();
+    const otp = new Otp({ userId: user._id, otp: new_otp });
+    await otp.save();
+    const subject = "Your Login OTP";
+    const body = `Your login OTP is: ${otp}`;
+
+    await mailer(email, subject, body);
+
+    res.status(200).json({ success: true, message: "" });
+  } catch (err) {
+    console.log(err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const verifyLoginOtp = async (req, res) => {
+  try {
+    const { otp, email, platform } = req.body;
+    const user = await User.findOne({ email });
+
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found!" });
+    }
+
+    const otp_doc = await Otp.findOne({ userId: user._id, otp });
+
+    if (!otp_doc) {
+      return res
+        .status(401)
+        .json({ success: false, message: "OTP has expired!" });
+    }
+
+    if (otp_doc.otp === Number(otp)) {
+      const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+        expiresIn: "28d",
+      });
+
+      await Otp.deleteMany({ userId: user._id });
+
+      // Invalidate old session for this platform
+      await Session.deleteMany({ userId: user._id, platform });
+
+      // Create new session
+      await Session.create({
+        userId: user._id,
+        platform,
+        token,
+      });
+
+      res.cookie("token", token, {
+        httpOnly: true,
+        secure: false, // ✅ in dev use false; only true on HTTPS
+        sameSite: "Lax", // ✅ 'Lax' is usually safest for dev
+        maxAge: 28 * 24 * 60 * 60 * 1000,
+      });
+
+      const userData = {
+        id: user._id.toString(),
+        firstname: user.firstname,
+        lastname: user.lastname,
+        email: user.email,
+        phone: user.phone,
+      };
+
+      return res
+        .status(200)
+        .json({ success: true, message: "", userId: user._id, userData });
+    }
+    return res.status(401).json({ success: false, message: "OTP Mismatch!" });
+  } catch (err) {
+    console.log(err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const forgotPassword = async (req, res) => {
+  try {
+    const { email } = req.body;
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found!" });
+    }
+    const token = crypto.randomBytes(20).toString("hex");
+    user.resetPasswordToken = token;
+    user.resetPasswordExpires = Date.now() + 3600000;
+    await user.save();
+    const resetUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/reset-password/${user.email}/${token}`;
+    const subject = "Reset Password";
+    const body = `Your reset password link: ${resetUrl}`;
+    await mailer(email, subject, body);
+    return res.status(200).json({ success: true, message: "" });
+  } catch (err) {
+    console.log(err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const resetPassword = async (req, res) => {
+  try {
+    const { email, token, password } = req.body;
+    const user = await User.findOne({
+      email: email,
+      resetPasswordToken: token,
+    });
+    const now = Date.now();
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found!" });
+    } else if (Number(user.resetPasswordExpires) < now) {
+      return res
+        .status(401)
+        .json({ success: false, message: "Token expired!" });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+    user.password = hashedPassword;
+    await user.save();
+    return res.status(200).json({ success: true, message: "" });
+  } catch (err) {
+    console.log(err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const getUser = async (req, res) => {
+  try {
+    const user_raw = req.user;
+    const user = {
+      id: user_raw._id.toString(),
+      firstName: user_raw.firstName,
+      lastName: user_raw.lastName,
+      email: user_raw.email,
+      phone: user_raw.phone,
+    };
+    return res.status(200).json({ success: true, user: user, message: "" });
+  } catch (err) {
+    console.log(err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const updateProfile = async (req, res) => {
+  try {
+    const { id, firstName, lastName, phone, email } = req.body;
+    if (!firstName || !lastName || !phone) {
+      return res
+        .status(400)
+        .json({ success: false, message: "All fields are required!" });
+    }
+    await User.updateOne(
+      { email: req.user.email },
+      { firstName, lastName, phone }
+    );
+    return res.status(200).json({ success: true, message: "" });
+  } catch (err) {
+    console.log(err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const updatePassword = async (req, res) => {
+  try {
+    const { oldPassword, newPassword, rePassword } = req.body;
+    const user = await User.findById(req.user._id);
+    if (!user) {
+      return res
+        .status(404)
+        .json({ success: false, message: "User not found!" });
+    }
+    const isMatch = await bcrypt.compare(oldPassword, user.password);
+    if (!isMatch) {
+      return res
+        .status(400)
+        .json({ success: false, message: "Incorrect old password" });
+    }
+    if (newPassword !== rePassword) {
+      return res.status(400).json({
+        success: false,
+        message: "New password and re-entered password do not match",
+      });
+    }
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
+    user.password = hashedPassword;
+    await user.save();
+    return res.status(200).json({ success: true, message: "Password updated" });
+  } catch (err) {
+    console.log(err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+const deleteProfile = async (req, res) => {
+  try {
+    await Session.deleteMany({
+      userId: req.user._id,
+    });
+    await User.findByIdAndDelete(req.user._id);
+    return res.status(200).json({ success: true, message: "" });
+  } catch (err) {
+    console.log(err.message);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+};
+
+module.exports = {
+  register,
+  sendVerifyOtp,
+  verifyUser,
+  login,
+  sendLoginOtp,
+  verifyLoginOtp,
+  forgotPassword,
+  resetPassword,
+  getUser,
+  updateProfile,
+  updatePassword,
+  deleteProfile,
+};
