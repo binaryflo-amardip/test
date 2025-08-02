@@ -41,6 +41,11 @@ app.get("/", (req, res) => {
   res.send("API running!");
 });
 
+app.use("/api/users", userRouter);
+app.use("/api/courses", courseRouter);
+app.use("/api/contacts", contactRouter);
+app.use("/api/purchases", purchaseRouter);
+
 // Start the server
 app.listen(PORT, async () => {
   await connectDB();
