@@ -3,6 +3,7 @@ const cors = require("cors");
 const dotenv = require("dotenv");
 const helmet = require("helmet");
 const cookieParser = require("cookie-parser");
+const connectDB = require("./db/connectDB");
 
 dotenv.config();
 
@@ -35,5 +36,6 @@ app.get("/", (req, res) => {
 
 // Start the server
 app.listen(PORT, async () => {
+  await connectDB();
   console.log(`Server is running on port ${PORT}`);
 });
