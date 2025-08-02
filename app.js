@@ -4,6 +4,11 @@ const dotenv = require("dotenv");
 const helmet = require("helmet");
 const cookieParser = require("cookie-parser");
 const connectDB = require("./db/connectDB");
+const userRouter = require("./routes/userRoutes");
+const courseRouter = require("./routes/courseRoutes");
+const contactRouter = require("./routes/contactRoutes");
+const purchaseRouter = require("./routes/purchaseRoutes");
+const webhookRouter = require("./routes/webhookRoutes");
 
 dotenv.config();
 
@@ -25,6 +30,8 @@ app.use(
     credentials: true,
   })
 );
+
+app.use("/api/webhook", webhookRouter);
 
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
