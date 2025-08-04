@@ -47,6 +47,87 @@ const register = async (req, res) => {
   }
 };
 
+const registerCheckout = async (req, res) => {
+  try {
+    const {
+      firstName,
+      lastName,
+      email,
+      password,
+      repassword,
+      phone,
+      platform,
+    } = req.body;
+    if (
+      !firstName ||
+      !lastName ||
+      !email ||
+      !password ||
+      !repassword ||
+      !phone ||
+      !platform
+    ) {
+      return res.json({ success: false, message: "Please fill in all fields" });
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    const hashedPassword = await bcrypt.hash(password, salt);
+
+    const newUser = new User({
+      username: email,
+      email: email,
+      firstName: firstName,
+      lastName: lastName,
+      phone: phone,
+      password: hashedPassword,
+      resetPasswordToken: "",
+      resetPasswordExpires: 0,
+      isVerified: true,
+      // isVerified: false,
+    });
+
+    const user = await newUser.save();
+
+    // Generate JWT token
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
+      expiresIn: "28d",
+    });
+
+    // Remove old sessions on this platform
+    await Session.deleteMany({ userId: user._id, platform });
+
+    // Create new session
+    await Session.create({ userId: user._id, token, platform });
+
+    // Set secure cookie
+    res.cookie("token", token, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
+      maxAge: 28 * 24 * 60 * 60 * 1000,
+    });
+
+    const userData = {
+      id: user._id.toString(),
+      firstName: user.firstname,
+      lastName: user.lastname,
+      email: user.email,
+      phone: user.phone,
+    };
+
+    return res.status(200).json({
+      success: true,
+      message: "Registration successful",
+      userId: user._id,
+      userData,
+      token,
+    });
+  } catch (error) {
+    console.log(error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
 const sendVerifyOtp = async (req, res) => {
   try {
     const { email } = req.body;
@@ -109,7 +190,7 @@ const verifyUser = async (req, res) => {
       res.cookie("token", token, {
         httpOnly: true,
         secure: process.env.NODE_ENV === "production",
-        sameSite: "Strict",
+        sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
         maxAge: 28 * 24 * 60 * 60 * 1000,
       });
       return res.status(200).json({ success: true, message: "" });
@@ -166,8 +247,8 @@ const login = async (req, res) => {
     // Set secure cookie
     res.cookie("token", token, {
       httpOnly: true,
-      secure: false, // ✅ in dev use false; only true on HTTPS
-      sameSite: "Lax", // ✅ 'Lax' is usually safest for dev
+      secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
       maxAge: 28 * 24 * 60 * 60 * 1000,
     });
 
@@ -184,6 +265,7 @@ const login = async (req, res) => {
       message: "Login successful",
       userId: user._id,
       userData,
+      token,
     });
   } catch (err) {
     console.log(err.message);
@@ -254,8 +336,8 @@ const verifyLoginOtp = async (req, res) => {
 
       res.cookie("token", token, {
         httpOnly: true,
-        secure: false, // ✅ in dev use false; only true on HTTPS
-        sameSite: "Lax", // ✅ 'Lax' is usually safest for dev
+        secure: process.env.NODE_ENV === "production",
+        sameSite: process.env.NODE_ENV === "production" ? "None" : "Lax",
         maxAge: 28 * 24 * 60 * 60 * 1000,
       });
 
@@ -333,6 +415,7 @@ const resetPassword = async (req, res) => {
 
 const getUser = async (req, res) => {
   try {
+    const token = req.cookies.token;
     const user_raw = req.user;
     const user = {
       id: user_raw._id.toString(),
@@ -341,7 +424,9 @@ const getUser = async (req, res) => {
       email: user_raw.email,
       phone: user_raw.phone,
     };
-    return res.status(200).json({ success: true, user: user, message: "" });
+    return res
+      .status(200)
+      .json({ success: true, user: user, token: token, message: "" });
   } catch (err) {
     console.log(err.message);
     return res.status(500).json({ success: false, message: err.message });
@@ -412,13 +497,35 @@ const deleteProfile = async (req, res) => {
   }
 };
 
+const logout = async (req, res) => {
+  try {
+    const { userId, platform } = req;
+
+    await Session.deleteOne({ userId, platform, token: req.cookies.token });
+
+    // Clear the cookie
+    res.clearCookie("token", {
+      httpOnly: true,
+      sameSite: "Lax",
+      secure: process.env.NODE_ENV === "production",
+    });
+
+    res.status(200).json({ success: true, message: "Logout successful" });
+  } catch (err) {
+    console.error("Logout error:", err.message);
+    res.status(500).json({ success: false, message: err.message });
+  }
+};
+
 module.exports = {
   register,
+  registerCheckout,
   sendVerifyOtp,
   verifyUser,
   login,
   sendLoginOtp,
   verifyLoginOtp,
+  logout,
   forgotPassword,
   resetPassword,
   getUser,

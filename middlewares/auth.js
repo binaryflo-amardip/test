@@ -7,7 +7,7 @@ const userAuth = async (req, res, next) => {
     const token =
       req.cookies.token || req.header("Authorization")?.replace("Bearer ", "");
     const platform = req.header("X-Platform");
-    console.log(token, platform);
+    // console.log(token, platform);
 
     if (!token || !platform) {
       return res

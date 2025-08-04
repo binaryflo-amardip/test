@@ -11,8 +11,6 @@ const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
 });
 
 const createPaymentIntent = async (req, res) => {
-  console.log("▶️ [POST] /api/create-payment-intent");
-
   try {
     const { amount, currency, metadata } = req.body;
 
@@ -35,8 +33,6 @@ const createPaymentIntent = async (req, res) => {
       });
     }
 
-    console.log(userId, courseId, packageId, email);
-
     const paymentIntent = await stripe.paymentIntents.create({
       amount,
       currency,
@@ -52,8 +48,6 @@ const createPaymentIntent = async (req, res) => {
       description: `Course ${courseId} - Package ${packageId}`,
     });
 
-    console.log("✅ Created PaymentIntent:", paymentIntent.id);
-
     return res.json({
       clientSecret: paymentIntent.client_secret,
       paymentIntentId: paymentIntent.id,
@@ -67,7 +61,6 @@ const createPaymentIntent = async (req, res) => {
 const getLatestPurchase = async (req, res) => {
   try {
     const userId = req.userId;
-    console.log(userId);
     const purchase = await Purchase.findOne({
       userId,
     })
@@ -102,8 +95,6 @@ const handleStripeWebhook = async (req, res) => {
     console.error("❌ Invalid webhook signature:", err.message);
     return res.status(400).json({ error: "Invalid signature" });
   }
-
-  console.log("📦 Stripe event:", event.type);
 
   if (event.type === "payment_intent.succeeded") {
     const paymentIntent = event.data.object;
@@ -144,10 +135,7 @@ const handleStripeWebhook = async (req, res) => {
         courseId: courseId,
       });
 
-      console.log("Current purchase:", purchase);
-
       if (purchase) {
-        console.log("🔄 Updating existing purchase:", purchase._id);
         const currentExpire = purchase.expireAt?.getTime() || 0;
         const base =
           currentExpire > now.getTime() ? currentExpire : now.getTime();
@@ -157,11 +145,6 @@ const handleStripeWebhook = async (req, res) => {
           timeLimit: newExpireAt.getTime(),
           packageId,
         });
-
-        console.log(
-          "🔄 Updated existing purchase with new expiry:",
-          newExpireAt
-        );
       } else {
         const expireAt = new Date(now.getTime() + durationDays * 86400000);
 
@@ -177,7 +160,6 @@ const handleStripeWebhook = async (req, res) => {
         });
 
         await newpurchase.save();
-        console.log("✅ New purchase saved:", newpurchase._id);
       }
 
       // Send confirmation email
