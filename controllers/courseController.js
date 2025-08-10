@@ -5,7 +5,6 @@ const Lession = require("../models/lessionModel.js");
 
 const getAllCourses = async (req, res) => {
   const { userId } = req.body;
-  console.log(userId);
   try {
     const courses = await Course.find().sort({ order: 1 }).lean();
     let purchases = [];
@@ -25,7 +24,6 @@ const getAllCourses = async (req, res) => {
 const getCourseById = async (req, res) => {
   const { id } = req.params;
   const { userId } = req.body;
-  console.log(userId);
   try {
     const course = await Course.findById(id).lean();
     if (!course) {

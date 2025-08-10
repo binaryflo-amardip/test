@@ -4,8 +4,9 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/userModel");
 const Session = require("../models/sessionModel");
 const Otp = require("../models/otpModel.js");
-const { mailer } = require("../utils/mailer.js");
+const { mailer, mailerHtml } = require("../utils/mailer.js");
 const { generateSecureOTP } = require("../utils/otp.js");
+const { getMail } = require("../utils/mails.js");
 
 const register = async (req, res) => {
   try {
@@ -19,7 +20,14 @@ const register = async (req, res) => {
       !repassword ||
       !phone
     ) {
-      return res.json({ success: false, message: "Please fill in all fields" });
+      return res.json({ success: false, message: "Vul alle velden in!" }); // Please fill in all fields!
+    }
+    const oldUser = await User.findOne({ email });
+    if (oldUser) {
+      return res.json({
+        success: false,
+        message: "Gebruiker met dit e-mailadres bestaat al!",
+      }); // User with this email already exists!
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -39,6 +47,12 @@ const register = async (req, res) => {
     });
 
     const user = await newUser.save();
+
+    const { subject, body } = getMail("registration", {
+      name: `${firstName} ${lastName}`,
+    });
+
+    await mailerHtml(email, subject, body);
 
     res.json({ success: true, userId: user._id.toString(), email: user.email });
   } catch (error) {
@@ -67,7 +81,14 @@ const registerCheckout = async (req, res) => {
       !phone ||
       !platform
     ) {
-      return res.json({ success: false, message: "Please fill in all fields" });
+      return res.json({ success: false, message: "Vul alle velden in!" });
+    }
+    const oldUser = await User.findOne({ email });
+    if (oldUser) {
+      return res.json({
+        success: false,
+        message: "Gebruiker met dit e-mailadres bestaat al!",
+      }); // User with this email already exists!
     }
 
     const salt = await bcrypt.genSalt(10);
@@ -87,6 +108,12 @@ const registerCheckout = async (req, res) => {
     });
 
     const user = await newUser.save();
+
+    const { subject, body } = getMail("registration", {
+      name: `${firstName} ${lastName}`,
+    });
+
+    await mailerHtml(email, subject, body);
 
     // Generate JWT token
     const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, {
@@ -117,7 +144,7 @@ const registerCheckout = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Registration successful",
+      message: "Registratie succesvol!",
       userId: user._id,
       userData,
       token,
@@ -133,18 +160,21 @@ const sendVerifyOtp = async (req, res) => {
     const { email } = req.body;
     const user = await User.findOne({ email });
     if (!user) {
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found!" });
+      return res.status(404).json({
+        success: false,
+        message: "Gebruiker niet gevonden!", // User not found!
+      });
     }
     await Otp.deleteMany({ userId: user._id });
     const new_otp = generateSecureOTP();
     const otp = new Otp({ userId: user._id, otp: new_otp });
     await otp.save();
-    const subject = "Your Verification OTP";
-    const body = `Your verification OTP is: ${otp}`;
 
-    await mailer(email, subject, body);
+    const { subject, body } = getMail("otpverify", {
+      otp: `${new_otp}`,
+    });
+
+    await mailerHtml(email, subject, body);
 
     res.status(200).json({ success: true, message: "" });
   } catch (err) {
@@ -161,7 +191,7 @@ const verifyUser = async (req, res) => {
     if (!user) {
       return res
         .status(404)
-        .json({ success: false, message: "User not found!" });
+        .json({ success: false, message: "Gebruiker niet gevonden!" }); // User not found!
     }
 
     const otp_doc = await Otp.findOne(userId, otp);
@@ -169,7 +199,7 @@ const verifyUser = async (req, res) => {
     if (!otp_doc) {
       return res
         .status(401)
-        .json({ success: false, message: "OTP has expired!" });
+        .json({ success: false, message: "OTP is verlopen!" }); // OTP has expired!
     }
 
     if (otp_doc.otp === otp) {
@@ -195,7 +225,9 @@ const verifyUser = async (req, res) => {
       });
       return res.status(200).json({ success: true, message: "" });
     }
-    return res.status(401).json({ success: false, message: "OTP Mismatch!" });
+    return res
+      .status(401)
+      .json({ success: false, message: "OTP komt niet overeen!" }); // OTP Mismatch!
   } catch (err) {
     console.log(err.message);
     return res.status(500).json({ success: false, message: err.message });
@@ -209,7 +241,7 @@ const login = async (req, res) => {
     if (!email || !password || !platform) {
       return res
         .status(400)
-        .json({ success: false, message: "Please fill in all fields" });
+        .json({ success: false, message: "Vul alle velden in!" }); //Please fill in all fields!
     }
 
     const user = await User.findOne({ email });
@@ -217,20 +249,20 @@ const login = async (req, res) => {
     if (!user) {
       return res
         .status(404)
-        .json({ success: false, message: "User not found" });
+        .json({ success: false, message: "Gebruiker niet gevonden!" }); //User not found!
     }
 
     const isMatch = await bcrypt.compare(password, user.password);
     if (!isMatch) {
       return res
         .status(401)
-        .json({ success: false, message: "Incorrect password" });
+        .json({ success: false, message: "Onjuist wachtwoord!" }); // Incorrect password!
     }
 
     if (!user.isVerified) {
       return res
         .status(403)
-        .json({ success: false, message: "Account not verified" });
+        .json({ success: false, message: "Account niet geverifieerd!" }); // Account not verified!
     }
 
     // Generate JWT token
@@ -262,7 +294,7 @@ const login = async (req, res) => {
 
     return res.status(200).json({
       success: true,
-      message: "Login successful",
+      message: "Inloggen succesvol!", // Login successful!
       userId: user._id,
       userData,
       token,
@@ -280,16 +312,18 @@ const sendLoginOtp = async (req, res) => {
     if (!user) {
       return res
         .status(404)
-        .json({ success: false, message: "User not found!" });
+        .json({ success: false, message: "Gebruiker niet gevonden!" }); // User not found!
     }
     await Otp.deleteMany({ userId: user._id });
     const new_otp = generateSecureOTP();
     const otp = new Otp({ userId: user._id, otp: new_otp });
     await otp.save();
-    const subject = "Your Login OTP";
-    const body = `Your login OTP is: ${otp}`;
 
-    await mailer(email, subject, body);
+    const { subject, body } = getMail("otplogin", {
+      otp: `${new_otp}`,
+    });
+
+    await mailerHtml(email, subject, body);
 
     res.status(200).json({ success: true, message: "" });
   } catch (err) {
@@ -306,7 +340,7 @@ const verifyLoginOtp = async (req, res) => {
     if (!user) {
       return res
         .status(404)
-        .json({ success: false, message: "User not found!" });
+        .json({ success: false, message: "Gebruiker niet gevonden!" }); // User not found!
     }
 
     const otp_doc = await Otp.findOne({ userId: user._id, otp });
@@ -314,7 +348,7 @@ const verifyLoginOtp = async (req, res) => {
     if (!otp_doc) {
       return res
         .status(401)
-        .json({ success: false, message: "OTP has expired!" });
+        .json({ success: false, message: "OTP is verlopen!" }); // OTP has expired!
     }
 
     if (otp_doc.otp === Number(otp)) {
@@ -353,7 +387,9 @@ const verifyLoginOtp = async (req, res) => {
         .status(200)
         .json({ success: true, message: "", userId: user._id, userData });
     }
-    return res.status(401).json({ success: false, message: "OTP Mismatch!" });
+    return res
+      .status(401)
+      .json({ success: false, message: "OTP komt niet overeen!" }); // OTP Mismatch!
   } catch (err) {
     console.log(err.message);
     return res.status(500).json({ success: false, message: err.message });
@@ -365,18 +401,22 @@ const forgotPassword = async (req, res) => {
     const { email } = req.body;
     const user = await User.findOne({ email });
     if (!user) {
-      return res
-        .status(404)
-        .json({ success: false, message: "User not found!" });
+      return res.status(404).json({
+        success: false,
+        message: "Gebruiker niet gevonden!", // User not found!
+      });
     }
     const token = crypto.randomBytes(20).toString("hex");
     user.resetPasswordToken = token;
     user.resetPasswordExpires = Date.now() + 3600000;
     await user.save();
     const resetUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/reset-password/${user.email}/${token}`;
-    const subject = "Reset Password";
-    const body = `Your reset password link: ${resetUrl}`;
-    await mailer(email, subject, body);
+
+    const { subject, body } = getMail("forgotpassword", {
+      resetUrl: `${resetUrl}`,
+    });
+
+    await mailerHtml(email, subject, body);
     return res.status(200).json({ success: true, message: "" });
   } catch (err) {
     console.log(err.message);
@@ -395,17 +435,21 @@ const resetPassword = async (req, res) => {
     if (!user) {
       return res
         .status(404)
-        .json({ success: false, message: "User not found!" });
+        .json({ success: false, message: "Gebruiker niet gevonden!" }); // User not found!
     } else if (Number(user.resetPasswordExpires) < now) {
       return res
         .status(401)
-        .json({ success: false, message: "Token expired!" });
+        .json({ success: false, message: "Token verlopen!" }); // Token expired!
     }
 
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(password, salt);
     user.password = hashedPassword;
     await user.save();
+
+    const { subject, body } = getMail("resetpassword", {});
+
+    await mailerHtml(email, subject, body);
     return res.status(200).json({ success: true, message: "" });
   } catch (err) {
     console.log(err.message);
@@ -439,12 +483,16 @@ const updateProfile = async (req, res) => {
     if (!firstName || !lastName || !phone) {
       return res
         .status(400)
-        .json({ success: false, message: "All fields are required!" });
+        .json({ success: false, message: "Alle velden zijn verplicht!" }); // All fields are required!
     }
     await User.updateOne(
       { email: req.user.email },
       { firstName, lastName, phone }
     );
+
+    const { subject, body } = getMail("updateprofile", {});
+
+    await mailerHtml(email, subject, body);
     return res.status(200).json({ success: true, message: "" });
   } catch (err) {
     console.log(err.message);
@@ -459,25 +507,28 @@ const updatePassword = async (req, res) => {
     if (!user) {
       return res
         .status(404)
-        .json({ success: false, message: "User not found!" });
+        .json({ success: false, message: "Gebruiker niet gevonden!" }); // User not found!
     }
     const isMatch = await bcrypt.compare(oldPassword, user.password);
     if (!isMatch) {
       return res
         .status(400)
-        .json({ success: false, message: "Incorrect old password" });
+        .json({ success: false, message: "Verkeerd oud wachtwoord!" }); // Incorrect old password!
     }
     if (newPassword !== rePassword) {
       return res.status(400).json({
         success: false,
-        message: "New password and re-entered password do not match",
+        message:
+          "Het nieuwe wachtwoord en het opnieuw ingevoerde wachtwoord komen niet overeen!", // New password and re-entered password do not match
       });
     }
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(newPassword, salt);
     user.password = hashedPassword;
     await user.save();
-    return res.status(200).json({ success: true, message: "Password updated" });
+    return res
+      .status(200)
+      .json({ success: true, message: "Wachtwoord bijgewerkt!" }); // Password updated!
   } catch (err) {
     console.log(err.message);
     return res.status(500).json({ success: false, message: err.message });

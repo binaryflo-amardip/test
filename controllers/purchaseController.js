@@ -17,19 +17,19 @@ const createPaymentIntent = async (req, res) => {
     if (!amount || !currency) {
       return res
         .status(400)
-        .json({ error: "Amount and currency are required" });
+        .json({ error: "Amount and currency are required!" });
     }
 
     if (!Number.isInteger(amount) || amount < 50) {
       return res
         .status(400)
-        .json({ error: "Invalid amount (min €0.50 required)" });
+        .json({ error: "Invalid amount (min €0.50 required)!" });
     }
 
     const { courseId, packageId, email, userId } = metadata || {};
     if (!courseId || !packageId || !email || !userId) {
       return res.status(400).json({
-        error: "Missing metadata: courseId, packageId, email, or userId",
+        error: "Missing metadata: courseId, packageId, email, or userId!",
       });
     }
 

@@ -6,11 +6,9 @@ const createContact = async (req, res) => {
   try {
     const contact = new Contact({ name, email, phone, query });
     await contact.save();
-    res
-      .status(201)
-      .json({ success: true, message: "Contact created successfully" });
+    res.status(201).json({ success: true, message: "Contact aangemaakt!" }); // Contact created successfully!
   } catch (error) {
-    console.error("Error creating contact:", error.message);
+    console.error("Fout bij het maken van contact:", error.message); // Error creating contact:
     res.status(500).json({ success: false, error: error.message });
   }
 };
@@ -22,13 +20,13 @@ const createSubscribe = async (req, res) => {
     if (existingSubscription) {
       return res
         .status(400)
-        .json({ success: false, message: "Email already subscribed" });
+        .json({ success: false, message: "E-mail is al geabonneerd!" }); // Email already subscribed!
     }
     const subscribe = new Subscribe({ email });
     await subscribe.save();
-    res.status(201).json({ success: true, message: "Subscription successful" });
+    res.status(201).json({ success: true, message: "Abonnement succesvol!" }); // Subscription successful!
   } catch (error) {
-    console.error("Error creating subscription:", error.message);
+    console.error("Fout bij aanmaken abonnement:", error.message); // Error creating subscription:
     res.status(500).json({ success: false, error: error.message });
   }
 };
