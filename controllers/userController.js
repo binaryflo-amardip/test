@@ -12,14 +12,7 @@ const register = async (req, res) => {
   try {
     const { firstName, lastName, email, password, repassword, phone } =
       req.body;
-    if (
-      !firstName ||
-      !lastName ||
-      !email ||
-      !password ||
-      !repassword ||
-      !phone
-    ) {
+    if (!firstName || !email || !password || !repassword || !phone) {
       return res.json({ success: false, message: "Vul alle velden in!" }); // Please fill in all fields!
     }
     const oldUser = await User.findOne({ email });
@@ -74,7 +67,6 @@ const registerCheckout = async (req, res) => {
     } = req.body;
     if (
       !firstName ||
-      !lastName ||
       !email ||
       !password ||
       !repassword ||
