@@ -5,6 +5,7 @@ const Lession = require("../models/lessionModel.js");
 const Video = require("../models/videoModel.js");
 const Stripe = require("stripe");
 const { mailerHtml } = require("../utils/mailer.js");
+const { getMail } = require("../utils/mails.js");
 
 const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: "2024-06-20",
@@ -163,26 +164,12 @@ const handleStripeWebhook = async (req, res) => {
       }
 
       // Send confirmation email
-      await mailerHtml(
-        email,
-        "Bedankt voor je aankoop bij cbrcursussen.nl!",
-        `
-          <body>
-            <p><strong>Bedankt voor je aankoop bij cbrcursussen.nl!</strong></p>
-            <p>Beste Student,</p>
-            <p>Gefeliciteerd! Je aankoop van de cursus is succesvol afgerond.</p>
-            <p>Je hebt nu toegang tot alle leerinhoud, interactieve quizzes en oefenexamens die je zullen helpen om je voor te bereiden op het CBR-examen.</p>
-            <p><strong>Wat Nu?</strong></p>
-            <ul>
-              <li>Log in op je account en ga naar je dashboard.</li>
-              <li>Start met je cursus en volg je voortgang.</li>
-              <li>Maak gebruik van de oefenexamens om jezelf klaar te stomen voor het echte examen.</li>
-            </ul>
-            <p>Veel succes met je cursus en theorie-examen!</p>
-            <p>Met vriendelijke groet, Het cbrcursussen.nl Team</p>
-          </body>
-        `
-      );
+      const { subject, body } = getMail("coursepurchase", {
+        course: `${course.name}`,
+        package: `${packageId}`,
+      });
+
+      await mailerHtml(email, subject, body);
     } catch (err) {
       console.error("❌ Error handling payment webhook:", err);
       return res.status(500).json({ error: "Webhook processing failed" });

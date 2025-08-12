@@ -116,7 +116,7 @@ const getMail = (type, data) => {
       body: `<body>
             <p><strong>Bedankt voor uw aankoop op saitcbr.nl!</strong></p>
             <p>Beste cursist,</p>
-            <p>Gefeliciteerd! Uw aankoop van de ${data.course} is succesvol afgerond.</p>
+            <p>Gefeliciteerd! Uw aankoop van het ${data.package} van ${data.course} is succesvol afgerond.</p>
             <p>U heeft nu toegang tot alle leerinhoud, interactieve quizzen en oefenexamens die u zullen helpen bij de voorbereiding op het CBR-examen.</p>
             <p><strong>Wat nu?</strong></p>
             <ul>

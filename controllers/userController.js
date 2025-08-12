@@ -4,7 +4,7 @@ const jwt = require("jsonwebtoken");
 const User = require("../models/userModel");
 const Session = require("../models/sessionModel");
 const Otp = require("../models/otpModel.js");
-const { mailer, mailerHtml } = require("../utils/mailer.js");
+const { mailerHtml } = require("../utils/mailer.js");
 const { generateSecureOTP } = require("../utils/otp.js");
 const { getMail } = require("../utils/mails.js");
 
@@ -391,6 +391,7 @@ const verifyLoginOtp = async (req, res) => {
 const forgotPassword = async (req, res) => {
   try {
     const { email } = req.body;
+    console.log(email);
     const user = await User.findOne({ email });
     if (!user) {
       return res.status(404).json({
@@ -402,7 +403,7 @@ const forgotPassword = async (req, res) => {
     user.resetPasswordToken = token;
     user.resetPasswordExpires = Date.now() + 3600000;
     await user.save();
-    const resetUrl = `${process.env.NEXT_PUBLIC_SITE_URL}/reset-password/${user.email}/${token}`;
+    const resetUrl = `${process.env.CLIENT_URL}/reset-password/${user.email}/${token}`;
 
     const { subject, body } = getMail("forgotpassword", {
       resetUrl: `${resetUrl}`,
