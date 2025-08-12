@@ -22,7 +22,8 @@ const allowedOrigins = [
   "http://localhost:3000",
   "http://127.0.0.1:3000",
   "https://cbr-website-final.vercel.app",
-  "https://www.saitcbr.nl/",
+  "https://www.saitcbr.nl",
+  "https://saitcbr.nl",
 ];
 
 app.use(
